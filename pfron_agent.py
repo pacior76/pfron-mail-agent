@@ -6,7 +6,6 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# ====== USTAWIENIA (z ENV z GitHuba) ======
 TO_EMAIL = os.environ.get("TO_EMAIL", "jacek@pacior.lap.pl")
 
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.pacior.lap.pl")
@@ -15,6 +14,7 @@ SMTP_USER = os.environ["SMTP_USER"]
 SMTP_PASS = os.environ["SMTP_PASS"]
 
 STATE_FILE = "state_seen.json"
+FORCE_TEST_EMAIL = os.environ.get("FORCE_TEST_EMAIL", "0") == "1"
 
 URLS = [
     "https://www.pfron.org.pl/aktualnosci/",
@@ -28,7 +28,6 @@ KEYWORDS = [
     "Aktywny Samorząd", "SOW", "PFRON"
 ]
 
-# ====== POMOCNICZE ======
 def load_seen():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r", encoding="utf-8") as f:
@@ -89,14 +88,19 @@ def main():
                 seen.add(key)
                 new_found.append((title, link, url))
 
-    if new_found:
+    if FORCE_TEST_EMAIL:
+        send_email(
+            "TEST: PFRON agent – SMTP działa",
+            "To jest mail testowy z GitHub Actions. Jeśli go widzisz, SMTP działa poprawnie."
+        )
+
+    elif new_found:
         new_found = new_found[:25]
         subject = f"PFRON – nowe ogłoszenia ({len(new_found)})"
         body = "Wykryto nowe komunikaty PFRON:\n\n"
         for t, l, src in new_found:
             body += f"- {t}\n  {l}\n  źródło: {src}\n\n"
         body += "Automatyczne powiadomienie."
-
         send_email(subject, body)
 
     save_seen(seen)
