@@ -1,9 +1,9 @@
 name: PFRON mail agent
 
 on:
-  schedule:
-    - cron: "0 8 * * *"   # codziennie 08:00 UTC (ok. 9:00 PL zimą)
   workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * *"
 
 permissions:
   contents: write
@@ -25,17 +25,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run PFRON agent
+      - name: Run PFRON agent (diagnostic)
         env:
           TO_EMAIL: jacek@pacior.lap.pl
-          SMTP_HOST: smtp.pacior.lap.pl
           SMTP_PORT: "465"
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
         run: |
-          python pfron_agent.py
+          echo "=== TRY 1: smtp.pacior.lap.pl (465 SSL) ==="
+          SMTP_HOST=smtp.pacior.lap.pl python pfron_agent.py || true
+          echo "=== TRY 2: mail.pacior.lap.pl (465 SSL) ==="
+          SMTP_HOST=mail.pacior.lap.pl python pfron_agent.py || true
+          echo "=== DONE ==="
 
-      - name: Save state
+      - name: Save state (if any)
         run: |
           if [ -f state_seen.json ]; then
             git config user.name "github-actions[bot]"
