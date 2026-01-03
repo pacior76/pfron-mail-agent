@@ -1,15 +1,10 @@
-name: PFRON mail agent
+name: PFRON mail agent (diagnostics)
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 8 * * *"
-
-permissions:
-  contents: write
 
 jobs:
-  run:
+  diag:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -25,26 +20,40 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run PFRON agent (test SMTP)
+      - name: Network/DNS diagnostics
+        run: |
+          echo "== DNS =="
+          for h in smtp.pacior.lap.pl mail.pacior.lap.pl smtp.domena.pl; do
+            echo "-- $h"
+            getent hosts $h || true
+            nslookup $h || true
+          done
+
+          echo "== TCP test 465 =="
+          for h in smtp.pacior.lap.pl mail.pacior.lap.pl smtp.domena.pl; do
+            echo "-- $h:465"
+            timeout 8 bash -lc "cat < /dev/null > /dev/tcp/$h/465" && echo "OK" || echo "NO"
+          done
+
+          echo "== TCP test 587 =="
+          for h in smtp.pacior.lap.pl mail.pacior.lap.pl smtp.domena.pl; do
+            echo "-- $h:587"
+            timeout 8 bash -lc "cat < /dev/null > /dev/tcp/$h/587" && echo "OK" || echo "NO"
+          done
+
+      - name: Run agent (force test email, fail on error)
         env:
           TO_EMAIL: jacek@pacior.lap.pl
-          SMTP_PORT: "465"
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           FORCE_TEST_EMAIL: "1"
         run: |
-          echo "=== TRY 1: smtp.pacior.lap.pl (465 SSL) ==="
-          SMTP_HOST=smtp.pacior.lap.pl python pfron_agent.py || true
-          echo "=== TRY 2: mail.pacior.lap.pl (465 SSL) ==="
-          SMTP_HOST=mail.pacior.lap.pl python pfron_agent.py || true
-          echo "=== DONE ==="
+          set -e
+          echo "== TRY 1: smtp.pacior.lap.pl:465 SSL =="
+          SMTP_HOST=smtp.pacior.lap.pl SMTP_PORT=465 python pfron_agent.py
 
-      - name: Save state (if any)
-        run: |
-          if [ -f state_seen.json ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add state_seen.json
-            git commit -m "Update state" || echo "No changes"
-            git push || echo "Nothing to push"
-          fi
+          echo "== TRY 2: mail.pacior.lap.pl:465 SSL =="
+          SMTP_HOST=mail.pacior.lap.pl SMTP_PORT=465 python pfron_agent.py
+
+          echo "== TRY 3: smtp.pacior.lap.pl:587 STARTTLS (fallback requires code change) =="
+          echo "Jeśli 465 nie działa, dam Ci poprawkę w kodzie na 587/STARTTLS."
