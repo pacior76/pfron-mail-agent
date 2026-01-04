@@ -56,10 +56,14 @@ def send_email(subject, body):
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
-    # SSL/TLS – port 465
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+    # STARTTLS dla portu 587 (Brevo)
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
         server.login(SMTP_USER, SMTP_PASS)
         server.send_message(msg)
+
 
 def extract_items(url):
     r = requests.get(url, timeout=25, headers={"User-Agent": "pfron-agent/1.0"})
