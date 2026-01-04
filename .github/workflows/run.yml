@@ -1,10 +1,15 @@
-name: PFRON mail agent (diagnostics)
+name: PFRON mail agent
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * *"   # codziennie 08:00 UTC (ok. 9:00 PL zimą)
+
+permissions:
+  contents: write
 
 jobs:
-  diag:
+  run:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -20,40 +25,38 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Network/DNS diagnostics
-        run: |
-          echo "== DNS =="
-          for h in smtp.pacior.lap.pl mail.pacior.lap.pl smtp.domena.pl; do
-            echo "-- $h"
-            getent hosts $h || true
-            nslookup $h || true
-          done
-
-          echo "== TCP test 465 =="
-          for h in smtp.pacior.lap.pl mail.pacior.lap.pl smtp.domena.pl; do
-            echo "-- $h:465"
-            timeout 8 bash -lc "cat < /dev/null > /dev/tcp/$h/465" && echo "OK" || echo "NO"
-          done
-
-          echo "== TCP test 587 =="
-          for h in smtp.pacior.lap.pl mail.pacior.lap.pl smtp.domena.pl; do
-            echo "-- $h:587"
-            timeout 8 bash -lc "cat < /dev/null > /dev/tcp/$h/587" && echo "OK" || echo "NO"
-          done
-
-      - name: Run agent (force test email, fail on error)
+      # WERSJA TESTOWA: wysyła maila testowego przy ręcznym uruchomieniu
+      - name: Run PFRON agent (test email)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           TO_EMAIL: jacek@pacior.lap.pl
+          SMTP_HOST: smtp-relay.brevo.com
+          SMTP_PORT: "587"
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           FORCE_TEST_EMAIL: "1"
         run: |
-          set -e
-          echo "== TRY 1: smtp.pacior.lap.pl:465 SSL =="
-          SMTP_HOST=smtp.pacior.lap.pl SMTP_PORT=465 python pfron_agent.py
+          python pfron_agent.py
 
-          echo "== TRY 2: mail.pacior.lap.pl:465 SSL =="
-          SMTP_HOST=mail.pacior.lap.pl SMTP_PORT=465 python pfron_agent.py
+      # WERSJA PRODUKCYJNA: w harmonogramie wysyła tylko jeśli są nowe ogłoszenia
+      - name: Run PFRON agent (scheduled)
+        if: ${{ github.event_name == 'schedule' }}
+        env:
+          TO_EMAIL: jacek@pacior.lap.pl
+          SMTP_HOST: smtp-relay.brevo.com
+          SMTP_PORT: "587"
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          FORCE_TEST_EMAIL: "0"
+        run: |
+          python pfron_agent.py
 
-          echo "== TRY 3: smtp.pacior.lap.pl:587 STARTTLS (fallback requires code change) =="
-          echo "Jeśli 465 nie działa, dam Ci poprawkę w kodzie na 587/STARTTLS."
+      - name: Save state (if any)
+        run: |
+          if [ -f state_seen.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add state_seen.json
+            git commit -m "Update state" || echo "No changes"
+            git push || echo "Nothing to push"
+          fi
