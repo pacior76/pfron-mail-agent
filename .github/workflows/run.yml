@@ -1,9 +1,9 @@
 name: PFRON mail agent
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: "0 8 * * *"   # codziennie 08:00 UTC
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -25,24 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # RĘCZNY TEST: wysyła zawsze mail testowy
-      - name: Run PFRON agent (test email)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        env:
-          TO_EMAIL: jacek@pacior.lap.pl
-          FROM_EMAIL: pacior76@gmail.com
-          FROM_NAME: PFRON Alert
-          SMTP_HOST: smtp-relay.brevo.com
-          SMTP_PORT: "587"
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          FORCE_TEST_EMAIL: "1"
-        run: |
-          python pfron_agent.py
-
-      # HARMONOGRAM: wysyła tylko gdy są nowe ogłoszenia
-      - name: Run PFRON agent (scheduled)
-        if: ${{ github.event_name == 'schedule' }}
+      - name: Run PFRON agent
         env:
           TO_EMAIL: jacek@pacior.lap.pl
           FROM_EMAIL: pacior76@gmail.com
