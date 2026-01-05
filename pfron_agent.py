@@ -6,15 +6,23 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+# ODBIORCA
 TO_EMAIL = os.environ.get("TO_EMAIL", "jacek@pacior.lap.pl")
 
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.pacior.lap.pl")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
+# BREVO SMTP (login/hasło z GitHub Secrets)
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp-relay.brevo.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER = os.environ["SMTP_USER"]
 SMTP_PASS = os.environ["SMTP_PASS"]
 
-STATE_FILE = "state_seen.json"
+# NADAWCA (ZWERYFIKOWANY W BREVO)
+FROM_EMAIL = os.environ.get("FROM_EMAIL", "pacior76@gmail.com")
+FROM_NAME = os.environ.get("FROM_NAME", "PFRON Alert")
+
+# Tryb testowy: 1 = zawsze wysyła mail testowy
 FORCE_TEST_EMAIL = os.environ.get("FORCE_TEST_EMAIL", "0") == "1"
+
+STATE_FILE = "state_seen.json"
 
 URLS = [
     "https://www.pfron.org.pl/aktualnosci/",
@@ -38,25 +46,27 @@ def save_seen(seen):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted(list(seen))[-2000:], f, ensure_ascii=False, indent=2)
 
-def normalize_url(link):
+def normalize_url(link: str) -> str:
+    link = link.strip()
     if link.startswith("//"):
         return "https:" + link
     if link.startswith("/"):
         return "https://www.pfron.org.pl" + link
     return link
 
-def looks_relevant(title):
+def looks_relevant(title: str) -> bool:
     t = title.lower()
     return any(k.lower() in t for k in KEYWORDS)
 
-def send_email(subject, body):
+def send_email(subject: str, body: str):
     msg = MIMEMultipart()
-    msg["From"] = SMTP_USER
+    msg["From"] = f"{FROM_NAME} <{FROM_EMAIL}>"
     msg["To"] = TO_EMAIL
     msg["Subject"] = subject
+    msg["Reply-To"] = FROM_EMAIL
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
-    # STARTTLS dla portu 587 (Brevo)
+    # Brevo: port 587 + STARTTLS
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
         server.ehlo()
         server.starttls()
@@ -64,8 +74,7 @@ def send_email(subject, body):
         server.login(SMTP_USER, SMTP_PASS)
         server.send_message(msg)
 
-
-def extract_items(url):
+def extract_items(url: str):
     r = requests.get(url, timeout=25, headers={"User-Agent": "pfron-agent/1.0"})
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "lxml")
@@ -94,10 +103,9 @@ def main():
 
     if FORCE_TEST_EMAIL:
         send_email(
-            "TEST: PFRON agent – SMTP działa",
-            "To jest mail testowy z GitHub Actions. Jeśli go widzisz, SMTP działa poprawnie."
+            "TEST: PFRON agent – Brevo OK",
+            "To jest mail testowy wysłany przez Brevo SMTP z GitHub Actions."
         )
-
     elif new_found:
         new_found = new_found[:25]
         subject = f"PFRON – nowe ogłoszenia ({len(new_found)})"
